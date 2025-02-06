@@ -17,19 +17,23 @@ curl -X POST http://localhost:5000/webhook \
      -d '{"key": "value"}'
 """
 
+
 app = Flask(__name__)
 
 # Configuration
 PORT = 5000  # Default port, can be changed via command-line argument
-TOKEN_FILE = "token.txt"  # File containing the Bearer Token
+TOKEN_FILE = "token.txt"  # File containing the Bearer Tokens (one per line)
 
-def load_token():
+def load_tokens():
     """
-    Load the Bearer Token from the token file.
+    Load all Bearer Tokens from the token file.
+    Returns a list of tokens.
     """
     try:
         with open(TOKEN_FILE, "r") as file:
-            return file.read().strip()
+            # Read all lines, strip whitespace, and ignore empty lines
+            tokens = [line.strip() for line in file if line.strip()]
+            return tokens
     except FileNotFoundError:
         print(f"Error: Token file '{TOKEN_FILE}' not found.")
         exit(1)
@@ -37,6 +41,7 @@ def load_token():
 def authenticate(request):
     """
     Validate the Bearer Token in the request's Authorization header.
+    Returns True if the token is valid, False otherwise.
     """
     auth_header = request.headers.get("Authorization")
     if not auth_header:
@@ -48,7 +53,9 @@ def authenticate(request):
 
     # Extract the token from the header
     token = auth_header.split(" ")[1]
-    return token == load_token()
+
+    # Check if the token matches any of the valid tokens
+    return token in load_tokens()
 
 @app.route('/webhook', methods=['POST'])
 def webhook():

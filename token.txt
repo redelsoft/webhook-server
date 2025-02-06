@@ -1,1 +1,2 @@
 my-secret-token
+my-secrettoken
