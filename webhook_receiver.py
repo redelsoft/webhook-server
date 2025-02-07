@@ -1,28 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from flask import Flask, request, jsonify
-import json
-
 """
-Example CURL Commands (note the escape characters that are required on Windows)
-
-Windows:
-curl -X POST http://localhost:5000/webhook -H "Content-Type: application/json" -H "Authorization: Bearer my-secret-token" -d "{\"key\": \"value\"}"
-
-Bash:
+Example bearer token:
 curl -X POST http://localhost:5000/webhook \
      -H "Content-Type: application/json" \
-     -H "Authorization: Bearer my-secret-token" \
+     -H "Authorization: Bearer my-secret-token-1" \
      -d '{"key": "value"}'
+
+curl -X POST http://localhost:5000/webhook \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Basic $(echo -n 'admin:admin123' | base64)" \
+     -d '{"key": "value"}'
+
 """
 
+from flask import Flask, request, jsonify
+import json
+from base64 import b64decode
 
 app = Flask(__name__)
 
 # Configuration
 PORT = 5000  # Default port, can be changed via command-line argument
 TOKEN_FILE = "token.txt"  # File containing the Bearer Tokens (one per line)
+CREDENTIALS_FILE = "credentials.txt"  # File containing username:password pairs (one per line)
 
 def load_tokens():
     """
@@ -38,12 +40,30 @@ def load_tokens():
         print(f"Error: Token file '{TOKEN_FILE}' not found.")
         exit(1)
 
-def authenticate(request):
+def load_credentials():
+    """
+    Load all username:password pairs from the credentials file.
+    Returns a dictionary of {username: password}.
+    """
+    try:
+        with open(CREDENTIALS_FILE, "r") as file:
+            # Read all lines, strip whitespace, and ignore empty lines
+            credentials = {}
+            for line in file:
+                if line.strip():
+                    username, password = line.strip().split(":", 1)
+                    credentials[username] = password
+            return credentials
+    except FileNotFoundError:
+        print(f"Error: Credentials file '{CREDENTIALS_FILE}' not found.")
+        exit(1)
+
+def authenticate_bearer(_request):
     """
     Validate the Bearer Token in the request's Authorization header.
     Returns True if the token is valid, False otherwise.
     """
-    auth_header = request.headers.get("Authorization")
+    auth_header = _request.headers.get("Authorization")
     if not auth_header:
         return False
 
@@ -57,10 +77,35 @@ def authenticate(request):
     # Check if the token matches any of the valid tokens
     return token in load_tokens()
 
+def authenticate_basic(_request):
+    """
+    Validate the username and password in the request's Authorization header (Basic Auth).
+    Returns True if the credentials are valid, False otherwise.
+    """
+    auth_header = _request.headers.get("Authorization")
+    if not auth_header:
+        return False
+
+    # Check if the header starts with "Basic "
+    if not auth_header.startswith("Basic "):
+        return False
+
+    # Extract and decode the base64-encoded credentials
+    encoded_credentials = auth_header.split(" ")[1]
+    try:
+        decoded_credentials = b64decode(encoded_credentials).decode("utf-8")
+        username, password = decoded_credentials.split(":", 1)
+    except (ValueError, UnicodeDecodeError):
+        return False
+
+    # Check if the username and password match any valid pair
+    credentials = load_credentials()
+    return credentials.get(username) == password
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    # Authenticate the request
-    if not authenticate(request):
+    # Authenticate the request using either Bearer Token or Basic Auth
+    if not (authenticate_bearer(request) or authenticate_basic(request)):
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
@@ -71,9 +116,12 @@ def webhook():
         if data is None:
             return jsonify({"error": "Invalid JSON payload"}), 400
 
-        # Pretty-print the JSON data
+        # Pretty-print the JSON data and headers
         formatted_data = json.dumps(data, indent=4)
-        print("Received JSON payload:")
+        print("Received HTTP Headers:")
+        for header, value in request.headers.items():
+            print(f"{header}: {value}")
+        print("\nReceived JSON payload:")
         print(formatted_data)
 
         # Return a success response
