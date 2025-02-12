@@ -8,6 +8,7 @@ curl -X POST http://localhost:5000/webhook \
      -H "Authorization: Bearer my-secret-token-1" \
      -d '{"key": "value"}'
 
+Example basic auth:
 curl -X POST http://localhost:5000/webhook \
      -H "Content-Type: application/json" \
      -H "Authorization: Basic $(echo -n 'admin:admin123' | base64)" \
@@ -26,6 +27,7 @@ PORT = 5000  # Default port, can be changed via command-line argument
 TOKEN_FILE = "token.txt"  # File containing the Bearer Tokens (one per line)
 CREDENTIALS_FILE = "credentials.txt"  # File containing username:password pairs (one per line)
 
+
 def load_tokens():
     """
     Load all Bearer Tokens from the token file.
@@ -39,6 +41,7 @@ def load_tokens():
     except FileNotFoundError:
         print(f"Error: Token file '{TOKEN_FILE}' not found.")
         exit(1)
+
 
 def load_credentials():
     """
@@ -58,6 +61,7 @@ def load_credentials():
         print(f"Error: Credentials file '{CREDENTIALS_FILE}' not found.")
         exit(1)
 
+
 def authenticate_bearer(_request):
     """
     Validate the Bearer Token in the request's Authorization header.
@@ -76,6 +80,7 @@ def authenticate_bearer(_request):
 
     # Check if the token matches any of the valid tokens
     return token in load_tokens()
+
 
 def authenticate_basic(_request):
     """
@@ -101,6 +106,7 @@ def authenticate_basic(_request):
     # Check if the username and password match any valid pair
     credentials = load_credentials()
     return credentials.get(username) == password
+
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -131,14 +137,22 @@ def webhook():
         # Handle any errors
         return jsonify({"error": str(e)}), 500
 
+
 if __name__ == '__main__':
     import argparse
 
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Webhook Receiver")
     parser.add_argument('--port', type=int, default=PORT, help='Port to listen on (default: 5000)')
+    parser.add_argument('--cert', help='Path to SSL certificate file (for HTTPS)')
+    parser.add_argument('--key', help='Path to SSL private key file (for HTTPS)')
     args = parser.parse_args()
+
+    # Configure SSL if certificate and key are provided
+    ssl_context = None
+    if args.cert and args.key:
+        ssl_context = (args.cert, args.key)
 
     # Run the Flask app
     print(f"Starting webhook receiver on port {args.port}...")
-    app.run(host='0.0.0.0', port=args.port)
+    app.run(host='0.0.0.0', port=args.port, ssl_context=ssl_context)
