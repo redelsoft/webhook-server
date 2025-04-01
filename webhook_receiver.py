@@ -16,17 +16,36 @@ curl -X POST http://localhost:5000/webhook \
 
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, send_from_directory
+import sqlite3
 import json
 from base64 import b64decode
+from datetime import datetime
+from flask_cors import CORS
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="templates", static_url_path="")
+CORS(app)  # Enable CORS for frontend communication
+
 
 # Configuration
 PORT = 5000  # Default port, can be changed via command-line argument
 TOKEN_FILE = "token.txt"  # File containing the Bearer Tokens (one per line)
 CREDENTIALS_FILE = "credentials.txt"  # File containing username:password pairs (one per line)
 
+# Database setup
+def init_db():
+    with sqlite3.connect("messages.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                data TEXT
+            )
+        """)
+        conn.commit()
+
+init_db()
 
 def load_tokens():
     """
@@ -108,6 +127,25 @@ def authenticate_basic(_request):
     return credentials.get(username) == password
 
 
+@app.route('/')
+def index():
+    return send_from_directory("templates", "index.html")
+
+
+@app.route('/messages', methods=['GET'])
+def get_messages():
+    search_query = request.args.get("search", "").lower()
+    with sqlite3.connect("messages.db") as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT timestamp, data FROM messages ORDER BY id DESC LIMIT 100")
+        messages = [{"timestamp": row[0], "data": row[1]} for row in cursor.fetchall()]
+    
+    if search_query:
+        messages = [msg for msg in messages if search_query in msg["data"].lower()]
+    
+    return jsonify(messages[::-1])  # Reverse to show oldest first
+
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     # Authenticate the request using either Bearer Token or Basic Auth
@@ -119,8 +157,14 @@ def webhook():
         data = request.get_json()
 
         # Check if data is valid JSON
-        if data is None:
+        if not data:
             return jsonify({"error": "Invalid JSON payload"}), 400
+        
+        timestamp = datetime.utcnow().isoformat()
+        with sqlite3.connect("messages.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO messages (timestamp, data) VALUES (?, ?)", (timestamp, json.dumps(data)))
+            conn.commit()
 
         # Pretty-print the JSON data and headers
         formatted_data = json.dumps(data, indent=4)

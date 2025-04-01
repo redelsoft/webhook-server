@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook Messages</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { max-width: 600px; margin: auto; }
+        .message-box { border: 1px solid #ddd; padding: 10px; margin: 5px 0; }
+        .messages-container {
+            height: 300px;
+            overflow: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            resize: both;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="container">
+        <h2>Webhook Messages</h2>
+        <input type="text" v-model="searchQuery" placeholder="Search messages..." @input="fetchMessages">
+        <div class="messages-container" ref="messagesContainer">
+            <div v-for="message in messages" :key="message.timestamp" class="message-box">
+                <strong>{{ message.timestamp }}</strong>
+                <p>{{ message.data }}</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        createApp({
+            data() {
+                return {
+                    messages: [],
+                    searchQuery: ''
+                };
+            },
+            methods: {
+                async fetchMessages() {
+                    try {
+                        const response = await axios.get(`/messages?search=${this.searchQuery}`);
+                        this.messages = response.data;
+                        this.$nextTick(() => {
+                            const container = this.$refs.messagesContainer;
+                            container.scrollTop = container.scrollHeight;
+                        });
+                    } catch (error) {
+                        console.error("Error fetching messages", error);
+                    }
+                }
+            },
+            mounted() {
+                this.fetchMessages();
+                setInterval(this.fetchMessages, 5000); // Auto-refresh every 5 seconds
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
